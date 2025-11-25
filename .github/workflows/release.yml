@@ -3,42 +3,38 @@ name: Release
 on:
   push:
     tags:
-      - "v*" # Triggers on tags like v0.1.0, v1.0.0, etc.
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build - ${{ matrix.platform.target }}
-    runs-on: ${{ matrix.platform.os }}
+    name: Build - ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          # Linux
+        include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            bin: rustyload
-            name: rustyload-linux-x86_64.tar.gz
+            binary: rustyload
+            archive: rustyload-linux-x86_64.tar.gz
 
-          # macOS Intel
           - os: macos-latest
             target: x86_64-apple-darwin
-            bin: rustyload
-            name: rustyload-macos-x86_64.tar.gz
+            binary: rustyload
+            archive: rustyload-macos-x86_64.tar.gz
 
-          # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
-            bin: rustyload
-            name: rustyload-macos-aarch64.tar.gz
+            binary: rustyload
+            archive: rustyload-macos-aarch64.tar.gz
 
-          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin: rustyload.exe
-            name: rustyload-windows-x86_64.zip
+            binary: rustyload.exe
+            archive: rustyload-windows-x86_64.zip
 
     steps:
       - name: Checkout repository
@@ -47,30 +43,39 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform.target }}
+          targets: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.platform.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
+      - name: Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          cd target/${{ matrix.platform.target }}/release
-          tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+          cd target/${{ matrix.target }}/release
+          tar czvf ${{ matrix.archive }} ${{ matrix.binary }}
+          mv ${{ matrix.archive }} ../../../
+          cd -
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czvf ${{ matrix.archive }} ${{ matrix.binary }}
+          mv ${{ matrix.archive }} ../../../
           cd -
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          cd target/${{ matrix.platform.target }}/release
-          7z a ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
-          cd -
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform.name }}
-          path: ${{ matrix.platform.name }}
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
 
   release:
     name: Create Release
@@ -86,14 +91,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: Display structure of downloaded files
-        run: ls -R artifacts
+      - name: List artifacts
+        run: |
+          echo "Artifacts downloaded:"
+          ls -la artifacts/ || echo "No artifacts directory"
+          ls -la . || echo "Current directory empty"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
           generate_release_notes: true
           draft: false
           prerelease: false
