@@ -1,6 +1,6 @@
 [package]
 name = "rustyload"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2021"
 authors = ["Ariz"]
 description = "A blazingly fast, concurrent HTTP load testing tool built in Rust"
